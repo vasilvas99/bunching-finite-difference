@@ -9,7 +9,13 @@ import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
 class CoupledHeatSolver:
     def __init__(
@@ -66,8 +72,12 @@ class CoupledHeatSolver:
         self.x = np.linspace(0, L, M)
         self.U = np.zeros((K, M))
         for i in range(K):
-            noise = np.random.normal(0, 0.05 * c, M)
-            self.U[i, :] = i * c + noise
+            # noise = np.random.normal(0, 0.05 * c, M)
+            # self.U[i, :] = i * c + noise
+            amplitude = 0.8 * self.c
+            phase_shift = (i * self.L / K) % (2 * np.pi)
+            self.U[i, :] = i * self.c + amplitude * np.cos(2 * np.pi * self.x / self.L) + phase_shift
+
         self.time_steps = int(np.ceil(T / dt))
 
     def index(self, i, j):
@@ -167,18 +177,19 @@ class CoupledHeatSolver:
 
     def solve_with_scipy(self):
         U_flat = self.U.flatten()
+        
         for n in range(self.time_steps):
-            logger.info(f"Solving step {n + 1}/{self.time_steps}...")
-            U_flat = opt.fsolve(
-                lambda u: self.build_residual_and_jacobian(u)[0],
-                U_flat,
-                xtol=1e-3,
-                maxfev=3,
-            )
-            self.U = U_flat.reshape((self.K, self.M))
             # save plot every save_interval steps
             if n % self.save_interval == 0:
                 self.plot_frame(self.U, n)
+            
+            logger.info(f"Solving step {n + 1}/{self.time_steps}...")
+            U_flat = opt.newton_krylov(
+                lambda u: self.build_residual_and_jacobian(u, build_jacobian=False)[0],
+                U_flat,
+                f_tol=1e-6,
+            )
+            self.U = U_flat.reshape((self.K, self.M))
 
         return self.U
 
@@ -201,19 +212,18 @@ if __name__ == "__main__":
         return np.exp(1 - v) - v * np.exp(1 - v)
 
     solver = CoupledHeatSolver(
-        K=20,
-        M=500,
-        L=20,
+        K=5,
+        M=1000,
+        L=50,
         T=5,
         D=1e-4,
         f=f,
         df_u_prev=df_prev,
         df_u=df_b,
         df_u_next=df_next,
-        c=0.1,
-        dt=1e-3,
+        c=1,
+        dt=1e-4,
         save_interval=1,
         output_dir="images",
     )
-    U_final = solver.solve(tol=1e-5, reinit_jacobian_steps=100, maxiter=600)
-    print("Solution shape:", U_final.shape)
+    U_final = solver.solve_with_scipy()
