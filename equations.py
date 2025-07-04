@@ -7,6 +7,7 @@ import numpy as np
 import scipy.optimize as opt
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
+from numba import njit
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -16,6 +17,37 @@ if not logger.handlers:
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+
+@njit
+def index(i, j, K, M):
+    """
+    Convert 2D indices (i, j) to a 1D index for a KxM grid.
+    """
+    return i * M + j
+
+@njit(parallel=True)
+def build_residual(U, U_prev, r, c, dt, f, K, M):
+    P = K * c  # periodic boundary condition offset
+    # P = np.max(U) - np.min(U)
+    N = K * M
+    F = np.zeros(N)
+    
+    for i in range(K):
+        for j in range(M):
+            jm = (j - 1) % M
+            jp = (j + 1) % M
+            im = (i - 1) % K
+            ip = (i + 1) % K
+
+            Uim = U[im, j] - P if (i - 1) != im else U[im, j]
+            Uip = U[ip, j] + P if (i + 1) != ip else U[ip, j]
+
+            idx = index(i, j, K, M)
+            lap = r * (U[i, jp] - 2 * U[i, j] + U[i, jm])
+            nonl = dt * f(Uim, U[i, j], Uip)
+            F[idx] = U[i, j] - U_prev[i, j] - lap - nonl    
+    
+    return F
 
 class CoupledHeatSolver:
     def __init__(
@@ -128,6 +160,18 @@ class CoupledHeatSolver:
 
         return F, J.tocsr()
 
+    def build_residual(self, U_flat):
+        return build_residual(
+            U_flat.reshape((self.K, self.M)),
+            self.U,
+            self.r,
+            self.c,
+            self.dt,
+            self.f,
+            self.K,
+            self.M,
+        )
+    
     def plot_frame(self, U, step):
         # normalize by subtracting the minimum value over i and x
         U_norm = U - np.min(U)
@@ -185,7 +229,7 @@ class CoupledHeatSolver:
             
             logger.info(f"Solving step {n + 1}/{self.time_steps}...")
             U_flat = opt.newton_krylov(
-                lambda u: self.build_residual_and_jacobian(u, build_jacobian=False)[0],
+                self.build_residual,
                 U_flat,
                 f_tol=1e-6,
             )
@@ -196,20 +240,27 @@ class CoupledHeatSolver:
 
 if __name__ == "__main__":
 
+    @njit
     def f(a, b, c):
-        v = c - b
-        return v * np.exp(1 - v)
+       return -((-a + b) ** -3) + (-a + b) ** -1 + (-b + c) ** -3 -((-b + c) ** -1)
 
     def df_prev(a, b, c):
-        return 0.0
-
+        raise NotImplementedError("df_prev is not implemented")
     def df_b(a, b, c):
-        v = c - b
-        return -np.exp(1 - v) + v * np.exp(1 - v)
-
+        raise NotImplementedError("df_b is not implemented")
     def df_next(a, b, c):
-        v = c - b
-        return np.exp(1 - v) - v * np.exp(1 - v)
+        raise NotImplementedError("df_next is not implemented")
+    
+    # def df_prev(a, b, c):
+    #     return 0.0
+
+    # def df_b(a, b, c):
+    #     v = c - b
+    #     return -np.exp(1 - v) + v * np.exp(1 - v)
+
+    # def df_next(a, b, c):
+    #     v = c - b
+    #     return np.exp(1 - v) - v * np.exp(1 - v)
 
     solver = CoupledHeatSolver(
         K=5,
@@ -222,7 +273,7 @@ if __name__ == "__main__":
         df_u=df_b,
         df_u_next=df_next,
         c=1,
-        dt=1e-4,
+        dt=1e-2,
         save_interval=1,
         output_dir="images",
     )
