@@ -4,8 +4,6 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.optimize as opt
-import scipy.sparse as sp
-import scipy.sparse.linalg as spla
 from numba import njit
 
 logger = logging.getLogger(__name__)
@@ -96,14 +94,7 @@ class CoupledHeatSolver:
         for i in range(K):
             noise = np.random.normal(0, 0.05 * c, M)
             self.U[i, :] = i * c + noise
-            # amplitude = 0.8 * self.c
-            # phase_shift = (i * self.L / K) % (2 * np.pi)
-            # self.U[i, :] = (
-            #     i * self.c
-            #     + amplitude * np.cos(2 * np.pi * self.x / self.L)
-            #     + phase_shift
-            # )
-
+            
         self.time_steps = int(np.ceil(T / dt))
         self.iter = 0
 
@@ -155,9 +146,9 @@ class CoupledHeatSolver:
                 f_tol=tol,
             )
 
-            noise =  np.random.normal(0, 0.005 * self.c, U_flat.shape)
+            # noise =  np.random.normal(0, 0.005 * self.c, U_flat.shape)
             
-            U_flat = U_flat + noise
+            U_flat = U_flat #+ noise
             self.U = U_flat.reshape((self.K, self.M))
 
         return self.U
@@ -175,7 +166,7 @@ if __name__ == "__main__":
         f = 0.0
         if np.abs(c-b) < 0.1 or np.abs(b-a) < 0.1:
             f =  0.0
-        f = -100*((-a + b) ** -1) + (-b + c) ** -1 + 1 * ((-a + b) ** -3 -((-b + c) ** -3))
+        f = -50*((-a + b) ** -1) + (-b + c) ** -1 + 1 * ((-a + b) ** -3 -((-b + c) ** -3))
         # print("f = ", f)
         return f
     
@@ -188,7 +179,7 @@ if __name__ == "__main__":
         M=100,
         L=5,
         T=10,
-        D=1,
+        D=1e-3,
         f=f3,
         c=1,
         dt=1e-4,
