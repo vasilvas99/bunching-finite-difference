@@ -31,7 +31,6 @@ class RHSType(enum.StrEnum):
 
 class CheckPointCLi(Tap):
     output_dir: Path = Path("images")  # Directory to save PNG frames
-    checkpoints_dir: Path = Path("images/checkpoints")  # Directory to save checkpoints
     tol: float = 1e-6  # Tolerance for the solver
 
     def configure(self):
@@ -52,7 +51,6 @@ class CLI(Tap):
     tol: float = 1e-6  # Tolerance for the solver
     image_save_interval: int = 50  # Save a plot every this many timesteps
     output_dir: Path = Path("images")  # Directory to save PNG frames
-    checkpoints_dir: Path = Path("images/checkpoints")  # Directory to save checkpoints
 
     def configure(self):
         self.add_subparser(
@@ -111,7 +109,6 @@ class CoupledHeatSolver:
         dt: float,
         save_interval=10,
         output_dir=Path("./images"),
-        checkpoints_dir=Path("./images/checkpoints"),
     ):
         """
         K: number of equations (periodic in i)
@@ -141,7 +138,7 @@ class CoupledHeatSolver:
 
         self.save_interval = save_interval
         self.output_dir = output_dir
-        self.checkpoints_dir = checkpoints_dir
+        self.checkpoints_dir = output_dir / "checkpoints"
 
         self.make_dirs()
 
@@ -149,7 +146,7 @@ class CoupledHeatSolver:
         self.x = np.linspace(0, L, M)
         self.U = np.zeros((K, M))
         for i in range(K):
-            noise = np.random.normal(0, 0.05 * c, M)
+            noise = np.random.normal(0, 0.005 * c, M)
             self.U[i, :] = i * c + noise
 
         self.time_steps = int(np.ceil(T / dt))
@@ -230,7 +227,6 @@ class CoupledHeatSolver:
     def load_checkpoint(
         filepath: Path,
         output_dir: Path = Path("images"),
-        checkpoints_dir: Path = Path("images/checkpoints"),
     ):
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"Checkpoint file {filepath} does not exist.")
@@ -247,7 +243,6 @@ class CoupledHeatSolver:
             dt=float(data["dt"]),
             save_interval=int(data["save_interval"]),
             output_dir=Path(output_dir),
-            checkpoints_dir=Path(checkpoints_dir),
         )
         solver.iter = int(data["iter"])
         solver.U = data["U"]
@@ -281,9 +276,7 @@ def main():
     print(cli)
     if hasattr(cli, "CHECKPOINT_FILE"):
         # Load from checkpoint
-        solver = CoupledHeatSolver.load_checkpoint(
-            cli.CHECKPOINT_FILE, cli.output_dir, cli.checkpoints_dir
-        )
+        solver = CoupledHeatSolver.load_checkpoint(cli.CHECKPOINT_FILE, cli.output_dir)
         logger.info(f"Loaded checkpoint from {cli.CHECKPOINT_FILE}")
     else:
         solver = CoupledHeatSolver(
@@ -297,7 +290,6 @@ def main():
             dt=cli.dt,
             save_interval=cli.image_save_interval,
             output_dir=cli.output_dir,
-            checkpoints_dir=cli.checkpoints_dir,
         )
 
     solver.solve(tol=cli.tol)
