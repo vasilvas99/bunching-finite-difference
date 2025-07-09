@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tap import Tap
 
-from libs.checkpoints import ImportedCheckpoint
+from libs.checkpoints import Checkpoint
 
 
 class CLI(Tap):
@@ -157,7 +157,7 @@ def plot_3d_surface(
 
 def main():
     cli = CLI().parse_args()
-    ch = ImportedCheckpoint.load_from_file(cli.input_checkpoint)
+    ch = Checkpoint.load_from_file(cli.input_checkpoint)
 
     X, Y, Z = create_3d_surface_from_level_lines(ch.U, ch.X, cli.h0)
 

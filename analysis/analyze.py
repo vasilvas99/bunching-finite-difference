@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tap import Tap
 
-from libs.checkpoints import ImportedCheckpoint
+from libs.checkpoints import Checkpoint
 
 
 class CLI(Tap):
@@ -71,7 +71,7 @@ def largest_bunch_per_column(distances_thr: np.ndarray):
 
 def main():
     cli = CLI().parse_args()
-    ch = ImportedCheckpoint.load_from_file(cli.input_checkpoint)
+    ch = Checkpoint.load_from_file(cli.input_checkpoint)
 
     distances = find_column_wise_distances(ch.U)
     distances_thr = np.where(distances < ch.c, 1, 0)

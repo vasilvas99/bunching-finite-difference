@@ -1,6 +1,4 @@
-import enum
 import logging
-import os
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -9,24 +7,8 @@ import scipy.optimize as opt
 from numba import njit
 from tap import Tap
 
-
-@njit
-def MM2_a50_r1(a, b, c):
-    f = (
-        -50 * ((-a + b) ** -1)
-        + (-b + c) ** -1
-        + 1 * ((-a + b) ** -3 - ((-b + c) ** -3))
-    )
-    return f
-
-
-class RHSType(enum.StrEnum):
-    MM2_a50_r1 = "MM2_a50_r1"
-
-    def into_rhs(self):
-        if self == RHSType.MM2_a50_r1:
-            return MM2_a50_r1
-        raise ValueError(f"Unknown RHS type: {self}")
+from libs.checkpoints import Checkpoint
+from libs.rhs import RHSType
 
 
 class CheckPointCLi(Tap):
@@ -201,54 +183,49 @@ class CoupledHeatSolver:
         plt.close()
 
     def save_checkpoint(self):
-        # saves all parameters and the current state of U in a compressed format
-        checkpoint = {
-            "K": self.K,
-            "M": self.M,
-            "L": self.L,
-            "T": self.T,
-            "D": self.D,
-            "f_type": self.f_type,
-            "c": self.c,
-            "dt": self.dt,
-            "dx": self.dx,
-            "r": self.r,
-            "U": self.U.copy(),
-            "save_interval": self.save_interval,
-            "time_steps": self.time_steps,
-            "iter": self.iter,
-        }
-        np.savez_compressed(
-            self.checkpoints_dir / f"checkpoint_{self.iter}.npz",
-            **checkpoint,
+        ch = Checkpoint(
+            U=self.U,
+            X=self.x,
+            K=self.K,
+            M=self.M,
+            L=self.L,
+            T=self.T,
+            D=self.D,
+            f_type=self.f_type,
+            c=self.c,
+            dt=self.dt,
+            dx=self.dx,
+            r=self.r,
+            save_interval=self.save_interval,
+            time_steps=self.time_steps,
+            iter=self.iter,
         )
+        ch.save_to_file(self.checkpoints_dir / f"checkpoint_{self.iter}.npz")
 
     @staticmethod
     def load_checkpoint(
         filepath: Path,
         output_dir: Path = Path("images"),
     ):
-        if not os.path.exists(filepath):
-            raise FileNotFoundError(f"Checkpoint file {filepath} does not exist.")
+        ch = Checkpoint.load_from_file(filepath)
 
-        data = np.load(filepath, allow_pickle=True)
         solver = CoupledHeatSolver(
-            K=int(data["K"]),
-            M=int(data["M"]),
-            L=float(data["L"]),
-            T=float(data["T"]),
-            D=float(data["D"]),
-            f_type=RHSType(data["f_type"].item()),
-            c=float(data["c"]),
-            dt=float(data["dt"]),
-            save_interval=int(data["save_interval"]),
+            K=ch.K,
+            M=ch.M,
+            L=ch.L,
+            T=ch.T,
+            D=ch.D,
+            f_type=ch.f_type,
+            c=ch.c,
+            dt=ch.dt,
+            save_interval=ch.save_interval,
             output_dir=Path(output_dir),
         )
-        solver.iter = int(data["iter"])
-        solver.U = data["U"]
-        solver.time_steps = int(data["time_steps"])
-        solver.dx = float(data["dx"])
-        solver.r = float(data["r"])
+        solver.iter = ch.iter
+        solver.U = ch.U
+        solver.time_steps = ch.time_steps
+        solver.dx = ch.dx
+        solver.r = ch.r
         logger.info(
             f"Loaded checkpoint with {solver.K} equations and {solver.M} grid points."
         )
