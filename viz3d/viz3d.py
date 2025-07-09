@@ -11,6 +11,8 @@ from libs.checkpoints import Checkpoint
 class CLI(Tap):
     input_checkpoint: Path  # Path to the input checkpoint file <checkpoint.npz>
     h0: int = 1  # Step height used during visualization
+    save: bool = False  # Save the plot to a file
+    save_dir: Path = Path("3d")  # Directory to save the plot
 
     def configure(self):
         self.add_argument(
@@ -133,7 +135,7 @@ def plot_3d_surface(
     # Add contour lines at exact step heights (isolines) for better edge visibility
     step_heights = np.arange(0, Z.max() + h0, h0)
     for height in step_heights:
-        ax1.contour(X, Y, Z, levels=[height], colors="red", linewidths=2.0, alpha=0.9)
+        ax1.contour(X, Y, Z, levels=[height], colors="red", linewidths=0.7, alpha=0.9)
 
     # Set background color for better contrast
     ax1.xaxis.pane.fill = False
@@ -152,18 +154,22 @@ def plot_3d_surface(
         ax2.grid(True)
 
     plt.tight_layout()
-    plt.show()
 
 
 def main():
     cli = CLI().parse_args()
     ch = Checkpoint.load_from_file(cli.input_checkpoint)
 
-    X, Y, Z = create_3d_surface_from_level_lines(ch.U, ch.X, cli.h0)
+    X, Y, Z = create_3d_surface_from_level_lines(ch.U - np.min(ch.U), ch.X, cli.h0)
 
     plot_3d_surface(
         X, Y, Z, ch.U, ch.X, "3D Staircase Surface from Level Lines", h0=cli.h0
     )
+
+    if cli.save:
+        plt.savefig(cli.save_dir/f"/{cli.input_checkpoint.stem}.png", dpi=300)
+    else:
+        plt.show()
 
 
 if __name__ == "__main__":
