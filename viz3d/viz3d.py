@@ -12,7 +12,7 @@ class CLI(Tap):
     input_checkpoint: Path  # Path to the input checkpoint file <checkpoint.npz>
     h0: int = 1  # Step height used during visualization
     save: bool = False  # Save the plot to a file
-    save_dir: Path = Path("3d")  # Directory to save the plot
+    save_dir: Path = Path("./3d")  # Directory to save the plot
 
     def configure(self):
         self.add_argument(
@@ -21,81 +21,26 @@ class CLI(Tap):
 
 
 def create_3d_surface_from_level_lines(u_array, x_coords, h0):
-    """
-    Create a 3D surface from level lines.
-
-    Parameters:
-    -----------
-    u_array : numpy.ndarray
-        2D array where u_array[i, j] = u_i(x_j) represents the i-th level line
-        at position x_j
-    x_coords : numpy.ndarray
-        1D array of x coordinates
-    h0 : float
-        Height difference between consecutive level lines
-    Returns:
-    --------
-    X, Y, Z : numpy.ndarray
-        Meshgrid arrays for 3D plotting
-    """
-
     n_levels, n_x = u_array.shape
-
-    # Create staircase surface
-    # For each level line, create a horizontal plane at height i*h0
-
-    # Create extended coordinates for the staircase
-    x_extended = []
-    y_extended = []
-    z_extended = []
-
-    for i in range(n_levels):
-        # Height for this level
-        height = i * h0
-
-        # Get the level line values
-        level_values = u_array[i, :]
-
-        # For each segment of the level line
-        for j in range(len(x_coords)):
-            x_extended.append(x_coords[j])
-            y_extended.append(level_values[j])
-            z_extended.append(height)
-
-    # Create a regular grid for surface plotting
     x_min, x_max = x_coords.min(), x_coords.max()
     y_min, y_max = u_array.min(), u_array.max()
-
-    # Create grid
     x_grid = np.linspace(x_min, x_max, 300)
     y_grid = np.linspace(y_min, y_max, 300)
     X, Y = np.meshgrid(x_grid, y_grid)
-
-    # Initialize Z with zeros
     Z = np.zeros_like(X)
 
-    # For each point in the grid, determine which level it belongs to
     for i in range(len(x_grid)):
+        x_val = x_grid[i]
+        # Interpolate all level lines at x_val
+        level_ys = [np.interp(x_val, x_coords, u_array[level, :]) for level in range(n_levels)]
         for j in range(len(y_grid)):
-            x_val = x_grid[i]
             y_val = y_grid[j]
-
-            # Find the appropriate level by checking which level line this point is closest to
-            min_dist = float("inf")
-            best_level = 0
-
-            for level in range(n_levels):
-                # Interpolate the level line at x_val
-                level_y = np.interp(x_val, x_coords, u_array[level, :])
-                dist = abs(y_val - level_y)
-
-                if dist < min_dist:
-                    min_dist = dist
-                    best_level = level
-
-            # Set the height based on the closest level
-            Z[j, i] = best_level * h0
-
+            # Find the highest level below y_val
+            level = 0
+            for k in range(n_levels):
+                if level_ys[k] <= y_val:
+                    level = k
+            Z[j, i] = level * h0
     return X, Y, Z
 
 
@@ -123,9 +68,8 @@ def plot_3d_surface(
         color="black",
         alpha=0.5,
         linewidth=0,
-        antialiased=False,
-        rcount=50,
-        ccount=50,
+        rcount=500,
+        ccount=500,
     )
     ax1.set_xlabel("X")
     ax1.set_ylabel("Y")
@@ -135,13 +79,13 @@ def plot_3d_surface(
     # Add contour lines at exact step heights (isolines) for better edge visibility
     step_heights = np.arange(0, Z.max() + h0, h0)
     for height in step_heights:
-        ax1.contour(X, Y, Z, levels=[height], colors="red", linewidths=0.7, alpha=0.9)
+        ax1.contour(X, Y, Z, levels=[height], colors="red", linewidths=0.7, alpha=0.3)
 
     # Set background color for better contrast
     ax1.xaxis.pane.fill = False
     ax1.yaxis.pane.fill = False
     ax1.zaxis.pane.fill = False
-    ax1.grid(True, alpha=0.3)
+    ax1.grid(False)
 
     # 2D level lines plot (if provided)
     if level_lines_2d is not None and x_coords is not None:
@@ -165,9 +109,8 @@ def main():
     plot_3d_surface(
         X, Y, Z, ch.U, ch.X, "3D Staircase Surface from Level Lines", h0=cli.h0
     )
-
     if cli.save:
-        plt.savefig(cli.save_dir/f"/{cli.input_checkpoint.stem}.png", dpi=300)
+        plt.savefig(cli.save_dir/f"{cli.input_checkpoint.stem}.png", dpi=300)
     else:
         plt.show()
 
