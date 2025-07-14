@@ -32,7 +32,9 @@ def create_3d_surface_from_level_lines(u_array, x_coords, h0):
     for i in range(len(x_grid)):
         x_val = x_grid[i]
         # Interpolate all level lines at x_val
-        level_ys = [np.interp(x_val, x_coords, u_array[level, :]) for level in range(n_levels)]
+        level_ys = [
+            np.interp(x_val, x_coords, u_array[level, :]) for level in range(n_levels)
+        ]
         for j in range(len(y_grid)):
             y_val = y_grid[j]
             # Find the highest level below y_val
@@ -110,7 +112,7 @@ def main():
         X, Y, Z, ch.U, ch.X, "3D Staircase Surface from Level Lines", h0=cli.h0
     )
     if cli.save:
-        plt.savefig(cli.save_dir/f"{cli.input_checkpoint.stem}.png", dpi=300)
+        plt.savefig(cli.save_dir / f"{cli.input_checkpoint.stem}.png", dpi=300)
     else:
         plt.show()
 

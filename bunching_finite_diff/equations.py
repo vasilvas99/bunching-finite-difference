@@ -132,6 +132,9 @@ class CoupledHeatSolver:
             self.U[i, :] = i * c + noise
 
         self.time_steps = int(np.ceil(T / dt))
+        self.number_format_width = (
+            int(np.log10(self.time_steps)) + 2 if self.time_steps > 0 else 2
+        )
         self.iter = 0
 
     def make_dirs(self):
@@ -178,7 +181,7 @@ class CoupledHeatSolver:
         plt.ylim(0, U_max)
         plt.title(f"Time step {step}")
 
-        filename = f"{self.output_dir}/frame_{step:05d}.png"
+        filename = f"{self.output_dir}/frame_{step:0{self.number_format_width}d}.png"
         plt.savefig(filename)
         plt.close()
 
@@ -200,7 +203,10 @@ class CoupledHeatSolver:
             time_steps=self.time_steps,
             iter=self.iter,
         )
-        ch.save_to_file(self.checkpoints_dir / f"checkpoint_{self.iter}.npz")
+        ch.save_to_file(
+            self.checkpoints_dir
+            / f"checkpoint_{self.iter:0{self.number_format_width}}.npz"
+        )
 
     @staticmethod
     def load_checkpoint(
