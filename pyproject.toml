@@ -12,7 +12,8 @@ numpy = ">=2.0.0,<2.3.0"
 numba = "^0.61.2"
 matplotlib = "^3.10.3"
 typed-argument-parser = "^1.10.1"
-ffmpeg-python = "^0.2.0"
+jax = {extras = ["cpu"], version = "^0.6.2"}
+jaxopt = "^0.8.5"
 
 
 [build-system]
