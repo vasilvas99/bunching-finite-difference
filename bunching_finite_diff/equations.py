@@ -1,14 +1,32 @@
 import logging
+import os
+import sys
+from functools import partial
 from pathlib import Path
 
-import matplotlib.pyplot as plt
-import numpy as np
-import scipy.optimize as opt
-from numba import njit
+import jax
+import jax.numpy as jnp
+import lineax
+import numpy as onp
+import optimistix as optx
+from matplotlib import pyplot as plt
 from tap import Tap
 
 from libs.checkpoints import Checkpoint
 from libs.rhs import RHSType
+
+jax.config.update(
+    "jax_enable_x64", True
+)  # Pretty important, otherwise convergence is horrendous
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
 
 class CheckPointCLi(Tap):
@@ -27,7 +45,7 @@ class CLI(Tap):
     L: float = 5.0  # Length of the spatial domain
     T: float = 10.0  # Final integration time
     D: float = 1e-1  # Diffusion coefficient (equiv. to line tension)
-    f: RHSType = RHSType.MM2_a50_r1  # Nonlinear coupling function
+    f: RHSType = RHSType.MM2_a50_r1_jax  # Nonlinear coupling function
     c: float = 1.0  # Initial spacing constant (u_i(0,x) = i * c)
     dt: float = 1e-4  # Time step
     tol: float = 1e-6  # Tolerance for the solver
@@ -42,40 +60,45 @@ class CLI(Tap):
         )
 
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+@partial(jax.jit, static_argnames=["f", "K", "M", "r", "c", "dt"])
+def _build_residual(U, U_prev, K, M, r, c, dt, f):
+    P = K * c
+    U = U.reshape((K, M))
+    U_jp = jnp.roll(U, -1, axis=1)
+    U_jm = jnp.roll(U, 1, axis=1)
+    lap = r * (U_jp - 2 * U + U_jm)
 
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+    U_im_raw = jnp.roll(U, 1, axis=0)
+    U_ip_raw = jnp.roll(U, -1, axis=0)
+
+    i_idx = jnp.arange(K)
+    im_wrap = (i_idx == 0)[:, None]
+    ip_wrap = (i_idx == K - 1)[:, None]
+
+    Uim = jnp.where(im_wrap, U_im_raw - P, U_im_raw)
+    Uip = jnp.where(ip_wrap, U_ip_raw + P, U_ip_raw)
+
+    nonl = dt * f(Uim, U, Uip)
+    F = U - U_prev - lap - nonl
+    return jnp.reshape(F, (K * M,))
 
 
-@njit(parallel=True)
-def build_residual(U, U_prev, r, c, dt, f, K, M):
-    P = K * c  # periodic boundary condition offset
-    # P = np.max(U) - np.min(U)
-    N = K * M
-    F = np.zeros(N)
+@partial(jax.jit, static_argnames=["f", "K", "M", "r", "c", "dt"])
+def _step(U_flat_prev, K, M, r, c, dt, f, tol):
+    solver = optx.Newton(
+        atol=tol,
+        rtol=tol,
+        linear_solver=lineax.GMRES(atol=tol, rtol=tol),
+        cauchy_termination=False,
+    )
 
-    for i in range(K):
-        for j in range(M):
-            jm = (j - 1) % M
-            jp = (j + 1) % M
-            im = (i - 1) % K
-            ip = (i + 1) % K
-
-            Uim = U[im, j] - P if (i - 1) != im else U[im, j]
-            Uip = U[ip, j] + P if (i + 1) != ip else U[ip, j]
-
-            idx = i * M + j
-            lap = r * (U[i, jp] - 2 * U[i, j] + U[i, jm])
-            nonl = dt * f(Uim, U[i, j], Uip)
-
-            F[idx] = U[i, j] - U_prev[i, j] - lap - nonl
-
-    return F
+    return optx.root_find(
+        lambda x, _: _build_residual(
+            x, U_flat_prev.reshape((K, M)), K, M, r, c, dt, f
+        ).flatten(),
+        solver,
+        U_flat_prev,
+    ).value
 
 
 class CoupledHeatSolver:
@@ -89,8 +112,8 @@ class CoupledHeatSolver:
         f_type: RHSType,
         c: float,
         dt: float,
-        save_interval=10,
-        output_dir=Path("./images"),
+        save_interval: int = 10,
+        output_dir: Path | str = Path("./images"),
     ):
         """
         K: number of equations (periodic in i)
@@ -104,7 +127,7 @@ class CoupledHeatSolver:
         save_interval: save a plot every this many timesteps
         output_dir: directory to save PNG frames
         """
-
+        logger.info("Initializing JAX-based solver.")
         self.K = K
         self.M = M
         self.L = L
@@ -119,21 +142,21 @@ class CoupledHeatSolver:
         self.r = D * dt / self.dx**2
 
         self.save_interval = save_interval
-        self.output_dir = output_dir
+        self.output_dir = Path(output_dir)
         self.checkpoints_dir = output_dir / "checkpoints"
 
         self.make_dirs()
 
         # spatial grid
-        self.x = np.linspace(0, L, M)
-        self.U = np.zeros((K, M))
-        for i in range(K):
-            noise = np.random.normal(0, 0.005 * c, M)
-            self.U[i, :] = i * c + noise
+        self.x = jnp.linspace(0, L, M)
+        self.U = jnp.zeros((K, M))
+        rand_seed = int.from_bytes(os.urandom(4), sys.byteorder)
+        noise = jax.random.normal(jax.random.key(rand_seed), (K, M)) * (0.005 * c)
+        self.U = jnp.arange(K)[:, None] * c + noise
 
-        self.time_steps = int(np.ceil(T / dt))
+        self.time_steps = int(jnp.ceil(T / dt))
         self.number_format_width = (
-            int(np.log10(self.time_steps)) + 2 if self.time_steps > 0 else 2
+            int(jnp.log10(self.time_steps)) + 2 if self.time_steps > 0 else 2
         )
         self.iter = 0
 
@@ -148,18 +171,6 @@ class CoupledHeatSolver:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.checkpoints_dir.mkdir(parents=True, exist_ok=True)
 
-    def build_residual(self, U_flat):
-        return build_residual(
-            U_flat.reshape((self.K, self.M)),
-            self.U,
-            self.r,
-            self.c,
-            self.dt,
-            self.f,
-            self.K,
-            self.M,
-        )
-
     def plot_frame(self):
         if self.iter % self.save_interval != 0:
             return
@@ -168,9 +179,9 @@ class CoupledHeatSolver:
         self.save_checkpoint()
         step = self.iter
 
-        U_norm = U - np.min(U)
+        U_norm = U - jnp.min(U)
         # U_norm = U
-        U_max = 1.1 * np.max(U_norm)
+        U_max = 1.1 * jnp.max(U_norm)
 
         plt.figure()
         for i in range(self.K):
@@ -187,8 +198,8 @@ class CoupledHeatSolver:
 
     def save_checkpoint(self):
         ch = Checkpoint(
-            U=self.U,
-            X=self.x,
+            U=onp.array(self.U),
+            X=onp.array(self.x),
             K=self.K,
             M=self.M,
             L=self.L,
@@ -228,39 +239,52 @@ class CoupledHeatSolver:
             output_dir=Path(output_dir),
         )
         solver.iter = ch.iter
-        solver.U = ch.U
+        solver.U = onp.array(ch.U)
         solver.time_steps = ch.time_steps
-        solver.dx = ch.dx
+        solver.dx = onp.array(ch.dx)
         solver.r = ch.r
         logger.info(
             f"Loaded checkpoint with {solver.K} equations and {solver.M} grid points."
         )
         return solver
 
+    def get_solution_error(self, U_flat_new, U_flat_old):
+        return jnp.linalg.norm(
+            _build_residual(
+                U_flat_new.reshape((self.K, self.M)),
+                U_flat_old.reshape((self.K, self.M)),
+                self.K,
+                self.M,
+                self.r,
+                self.c,
+                self.dt,
+                self.f,
+            )
+        )
+
     def solve(self, tol=1e-6):
-        U_flat = self.U.flatten()
         for n in range(self.iter, self.time_steps):
             self.iter = n
             self.plot_frame()
             logger.info(f"Solving step {n + 1}/{self.time_steps}...")
-            U_flat = opt.newton_krylov(
-                self.build_residual,
-                U_flat,
-                f_tol=tol,
+
+            U_flat_old = self.U.flatten()
+            U_flat_new = _step(
+                U_flat_old, self.K, self.M, self.r, self.c, self.dt, self.f, tol
             )
+
             logger.debug(
-                f"Step {n + 1}: Residual norm = {np.linalg.norm(self.build_residual(U_flat))}"
+                f"Residual: {self.get_solution_error(U_flat_new, U_flat_old):.6e}"
             )
-            self.U = U_flat.reshape((self.K, self.M))
+            self.U = U_flat_new.reshape((self.K, self.M))
 
         return self.U
 
 
 def main():
     cli = CLI().parse_args()
-    print(cli)
+    logger.info(cli)
     if hasattr(cli, "CHECKPOINT_FILE"):
-        # Load from checkpoint
         solver = CoupledHeatSolver.load_checkpoint(cli.CHECKPOINT_FILE, cli.output_dir)
         logger.info(f"Loaded checkpoint from {cli.CHECKPOINT_FILE}")
     else:
