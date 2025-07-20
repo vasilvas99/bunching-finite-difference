@@ -16,7 +16,6 @@ from libs.checkpoints import Checkpoint
 from libs.rhs import RHSType
 
 jax.config.update("jax_enable_x64", True)
-jax.config.update("jax_num_cpu_devices", 16)
 
 
 class CheckPointCLi(Tap):
@@ -87,8 +86,8 @@ def build_residual(U, U_prev, K, M, r, c, dt, f):
 def step(U_flat_prev, K, M, r, c, dt, f, tol):
     solver = optx.Newton(
         atol=tol,
-        rtol=tol**2,
-        linear_solver=lineax.GMRES(atol=tol, rtol=tol**2),
+        rtol=tol,
+        linear_solver=lineax.GMRES(atol=tol, rtol=tol),
         cauchy_termination=False,
     )
 
@@ -259,7 +258,10 @@ class CoupledHeatSolver:
             U_flat_new = step(
                 U_flat_old, self.K, self.M, self.r, self.c, self.dt, self.f, tol
             )
-
+            K, M = self.K, self.M
+            logger.debug(
+                f"Residual: {jnp.linalg.norm(build_residual(U_flat_new.reshape((K, M)), U_flat_old.reshape((K,M)), self.K, self.M, self.r, self.c, self.dt, self.f))}"
+            )
             self.U = U_flat_new.reshape((self.K, self.M))
 
         return self.U
