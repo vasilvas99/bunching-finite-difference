@@ -1,11 +1,14 @@
 import logging
+import os
+import sys
 from functools import partial
 from pathlib import Path
 
 import jax
 import jax.numpy as jnp
-import jaxopt
+import lineax
 import numpy as onp
+import optimistix as optx
 from matplotlib import pyplot as plt
 from tap import Tap
 
@@ -13,6 +16,7 @@ from libs.checkpoints import Checkpoint
 from libs.rhs import RHSType
 
 jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_num_cpu_devices", 16)
 
 
 class CheckPointCLi(Tap):
@@ -56,11 +60,10 @@ if not logger.handlers:
     logger.addHandler(handler)
 
 
-@partial(jax.jit, static_argnames=["f"])
-def build_residual(U, U_prev, r, c, dt, f):
-    K, M = U.shape
+@partial(jax.jit, static_argnames=["f", "K", "M", "r", "c", "dt"])
+def build_residual(U, U_prev, K, M, r, c, dt, f):
     P = K * c
-
+    U = U.reshape((K, M))
     U_jp = jnp.roll(U, -1, axis=1)
     U_jm = jnp.roll(U, 1, axis=1)
     lap = r * (U_jp - 2 * U + U_jm)
@@ -78,6 +81,24 @@ def build_residual(U, U_prev, r, c, dt, f):
     nonl = dt * f(Uim, U, Uip)
     F = U - U_prev - lap - nonl
     return jnp.reshape(F, (K * M,))
+
+
+@partial(jax.jit, static_argnames=["f", "K", "M", "r", "c", "dt"])
+def step(U_flat_prev, K, M, r, c, dt, f, tol):
+    solver = optx.Newton(
+        atol=tol,
+        rtol=tol**2,
+        linear_solver=lineax.GMRES(atol=tol, rtol=tol**2),
+        cauchy_termination=False,
+    )
+
+    return optx.root_find(
+        lambda x, _: build_residual(
+            x, U_flat_prev.reshape((K, M)), K, M, r, c, dt, f
+        ).flatten(),
+        solver,
+        U_flat_prev,
+    ).value
 
 
 class CoupledHeatSolver:
@@ -129,7 +150,8 @@ class CoupledHeatSolver:
         # spatial grid
         self.x = jnp.linspace(0, L, M)
         self.U = jnp.zeros((K, M))
-        noise = jax.random.normal(jax.random.PRNGKey(0), (K, M)) * (0.005 * c)
+        rand_seed = int.from_bytes(os.urandom(4), sys.byteorder)
+        noise = jax.random.normal(jax.random.key(rand_seed), (K, M)) * (0.005 * c)
         self.U = jnp.arange(K)[:, None] * c + noise
 
         self.time_steps = int(jnp.ceil(T / dt))
@@ -148,16 +170,6 @@ class CoupledHeatSolver:
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.checkpoints_dir.mkdir(parents=True, exist_ok=True)
-
-    def build_residual(self, U_flat):
-        return build_residual(
-            U_flat.reshape((self.K, self.M)),
-            self.U,
-            self.r,
-            self.c,
-            self.dt,
-            self.f,
-        )
 
     def plot_frame(self):
         if self.iter % self.save_interval != 0:
@@ -241,19 +253,13 @@ class CoupledHeatSolver:
             self.iter = n
             self.plot_frame()
             logger.info(f"Solving step {n + 1}/{self.time_steps}...")
-            broyden = jaxopt.Broyden(
-                fun=partial(
-                    self.build_residual,
-                ),
-                tol=tol,
-            )
-            U_flat_new = broyden.run(
-                init_params=self.U.flatten(),
-            ).params
 
-            logger.debug(
-                f"Resd: {jnp.linalg.norm(self.build_residual(U_flat_new), ord=jnp.inf)}"
+            U_flat_old = self.U.flatten()
+
+            U_flat_new = step(
+                U_flat_old, self.K, self.M, self.r, self.c, self.dt, self.f, tol
             )
+
             self.U = U_flat_new.reshape((self.K, self.M))
 
         return self.U

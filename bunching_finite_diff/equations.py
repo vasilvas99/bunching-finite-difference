@@ -248,7 +248,9 @@ class CoupledHeatSolver:
                 U_flat,
                 f_tol=tol,
             )
-
+            logger.debug(
+                f"Step {n + 1}: Residual norm = {np.linalg.norm(self.build_residual(U_flat))}"
+            )
             self.U = U_flat.reshape((self.K, self.M))
 
         return self.U
