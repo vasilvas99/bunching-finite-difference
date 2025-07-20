@@ -13,7 +13,8 @@ numba = "^0.61.2"
 matplotlib = "^3.10.3"
 typed-argument-parser = "^1.10.1"
 jax = {extras = ["cpu"], version = "^0.6.2"}
-jaxopt = "^0.8.5"
+optimistix = "^0.0.10"
+lineax = "^0.0.8"
 
 
 [build-system]
