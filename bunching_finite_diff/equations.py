@@ -9,7 +9,6 @@ import jax.numpy as jnp
 import lineax
 import numpy as onp
 import optimistix as optx
-from matplotlib import pyplot as plt
 from tap import Tap
 
 from libs.checkpoints import Checkpoint
@@ -30,7 +29,7 @@ if not logger.handlers:
 
 
 class CheckPointCLi(Tap):
-    output_dir: Path = Path("images")  # Directory to save PNG frames
+    checkpoints_dir: Path = Path("checkpoints")  # Directory to save checkpoints
     tol: float = 1e-6  # Tolerance for the solver
 
     def configure(self):
@@ -49,8 +48,8 @@ class CLI(Tap):
     c: float = 1.0  # Initial spacing constant (u_i(0,x) = i * c)
     dt: float = 1e-4  # Time step
     tol: float = 1e-6  # Tolerance for the solver
-    image_save_interval: int = 50  # Save a plot every this many timesteps
-    output_dir: Path = Path("images")  # Directory to save PNG frames
+    checkpoint_interval: int = 50  # Save a plot every this many timesteps
+    checkpoints_dir: Path = Path("checkpoints")  # Directory to save checkpoints
 
     def configure(self):
         self.add_subparser(
@@ -112,8 +111,8 @@ class CoupledHeatSolver:
         f_type: RHSType,
         c: float,
         dt: float,
-        save_interval: int = 10,
-        output_dir: Path | str = Path("./images"),
+        checkpoint_interval: int = 10,
+        output_dir: Path | str = Path("./checkpoints"),
     ):
         """
         K: number of equations (periodic in i)
@@ -141,9 +140,8 @@ class CoupledHeatSolver:
         self.dx = self.L / (M - 1)
         self.r = D * dt / self.dx**2
 
-        self.save_interval = save_interval
-        self.output_dir = Path(output_dir)
-        self.checkpoints_dir = output_dir / "checkpoints"
+        self.checkpoint_interval = checkpoint_interval
+        self.checkpoints_dir = Path(output_dir)
 
         self.make_dirs()
 
@@ -161,42 +159,14 @@ class CoupledHeatSolver:
         self.iter = 0
 
     def make_dirs(self):
-        if self.output_dir.exists() and not self.output_dir.is_dir():
-            raise ValueError(f"Output directory {self.output_dir} is not a directory.")
-        if self.output_dir.exists() and not self.checkpoints_dir.is_dir():
+        if self.checkpoints_dir.exists() and not self.checkpoints_dir.is_dir():
             raise ValueError(
-                f"Checkpoints directory {self.checkpoints_dir} is not a directory."
+                f"Output directory {self.checkpoints_dir} exists and is not a directory."
             )
 
-        self.output_dir.mkdir(parents=True, exist_ok=True)
         self.checkpoints_dir.mkdir(parents=True, exist_ok=True)
 
-    def plot_frame(self):
-        if self.iter % self.save_interval != 0:
-            return
-
-        U = self.U
-        self.save_checkpoint()
-        step = self.iter
-
-        U_norm = U - jnp.min(U)
-        # U_norm = U
-        U_max = 1.1 * jnp.max(U_norm)
-
-        plt.figure()
-        for i in range(self.K):
-            plt.plot(self.x, U_norm[i, :], label=f"$u_{{" f"{i+1}" f"}}$")
-
-        plt.xlabel("x")
-        plt.ylabel("$u_i - min$")
-        plt.ylim(0, U_max)
-        plt.title(f"Time step {step}")
-
-        filename = f"{self.output_dir}/frame_{step:0{self.number_format_width}d}.png"
-        plt.savefig(filename)
-        plt.close()
-
-    def save_checkpoint(self):
+    def save_checkpoint(self) -> Checkpoint:
         ch = Checkpoint(
             U=onp.array(self.U),
             X=onp.array(self.x),
@@ -210,7 +180,7 @@ class CoupledHeatSolver:
             dt=self.dt,
             dx=self.dx,
             r=self.r,
-            save_interval=self.save_interval,
+            save_interval=self.checkpoint_interval,
             time_steps=self.time_steps,
             iter=self.iter,
         )
@@ -218,6 +188,7 @@ class CoupledHeatSolver:
             self.checkpoints_dir
             / f"checkpoint_{self.iter:0{self.number_format_width}}.npz"
         )
+        return ch
 
     @staticmethod
     def load_checkpoint(
@@ -235,7 +206,7 @@ class CoupledHeatSolver:
             f_type=ch.f_type,
             c=ch.c,
             dt=ch.dt,
-            save_interval=ch.save_interval,
+            checkpoint_interval=ch.save_interval,
             output_dir=Path(output_dir),
         )
         solver.iter = ch.iter
@@ -265,7 +236,9 @@ class CoupledHeatSolver:
     def solve(self, tol=1e-6):
         for n in range(self.iter, self.time_steps):
             self.iter = n
-            self.plot_frame()
+            if self.iter % self.checkpoint_interval == 0:
+                self.save_checkpoint()
+
             logger.info(f"Solving step {n + 1}/{self.time_steps}...")
 
             U_flat_old = self.U.flatten()
@@ -277,7 +250,6 @@ class CoupledHeatSolver:
                 f"Residual: {self.get_solution_error(U_flat_new, U_flat_old):.6e}"
             )
             self.U = U_flat_new.reshape((self.K, self.M))
-
         return self.U
 
 
@@ -285,7 +257,9 @@ def main():
     cli = CLI().parse_args()
     logger.info(cli)
     if hasattr(cli, "CHECKPOINT_FILE"):
-        solver = CoupledHeatSolver.load_checkpoint(cli.CHECKPOINT_FILE, cli.output_dir)
+        solver = CoupledHeatSolver.load_checkpoint(
+            cli.CHECKPOINT_FILE, cli.checkpoints_dir
+        )
         logger.info(f"Loaded checkpoint from {cli.CHECKPOINT_FILE}")
     else:
         solver = CoupledHeatSolver(
@@ -297,8 +271,8 @@ def main():
             f_type=cli.f,
             c=cli.c,
             dt=cli.dt,
-            save_interval=cli.image_save_interval,
-            output_dir=cli.output_dir,
+            checkpoint_interval=cli.checkpoint_interval,
+            output_dir=cli.checkpoints_dir,
         )
 
     solver.solve(tol=cli.tol)
