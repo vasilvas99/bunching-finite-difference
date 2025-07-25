@@ -4,21 +4,21 @@
 
 1. Install poetry 2.0+
     ```bash
-    $ pip3 install poetry
+    pip3 install poetry
     ```
 2. Install the dependencies
     ```bash
-    $ poetry sync
+    poetry sync
     ```
 3. Get help
     ```bash
-    $ poetry run python -m bunching_finite_diff --help
+    poetry run python -m bunching_finite_diff --help
     ```
 4. Run simulation with defaults
     ```bash
-    $ poetry run python -m bunching_finite_diff
-    ``
+    poetry run python -m bunching_finite_diff
+    ```
 5. **OR** Continue simulation from checkpoint
     ```bash
-    $ poetry run python -m bunching_finite_diff checkpoint <checkpoint_file.npz>
+    poetry run python -m bunching_finite_diff checkpoint <checkpoint_file.npz>
     ```

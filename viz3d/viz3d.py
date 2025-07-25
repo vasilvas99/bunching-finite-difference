@@ -1,4 +1,3 @@
-import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -63,7 +62,7 @@ def plot_3d_surface(
     # 3D surface plot
     ax1 = fig.add_subplot(121, projection="3d")
     ax1.view_init(elev=30, azim=-160)
-    surf = ax1.plot_surface(
+    ax1.plot_surface(
         X,
         Y,
         Z,
