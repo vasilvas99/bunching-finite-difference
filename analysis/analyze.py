@@ -136,7 +136,7 @@ def main():
 
     # plot average  step positions
     avg_positions = average_step_positions(checkpoint)
-    bunches = indentify_bunches(avg_positions, bunch_def=1.2 * checkpoint.c)
+    bunches = indentify_bunches(avg_positions, bunch_def=1 * checkpoint.c)
 
     plot_lmax_vs_lmin(bunches)
     plot_bunch_sizes_histogram(bunches)
