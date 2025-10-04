@@ -5,6 +5,7 @@ import numpy as np
 from tap import Tap
 
 from libs.checkpoints import Checkpoint
+from libs.data3d import create_3d_surface_from_level_lines
 
 
 class CLI(Tap):
@@ -17,32 +18,6 @@ class CLI(Tap):
         self.add_argument(
             "input_checkpoint", type=Path, help="Path to the input checkpoint file."
         )
-
-
-def create_3d_surface_from_level_lines(u_array, x_coords, h0):
-    n_levels, n_x = u_array.shape
-    x_min, x_max = x_coords.min(), x_coords.max()
-    y_min, y_max = u_array.min(), u_array.max()
-    x_grid = np.linspace(x_min, x_max, 300)
-    y_grid = np.linspace(y_min, y_max, 300)
-    X, Y = np.meshgrid(x_grid, y_grid)
-    Z = np.zeros_like(X)
-
-    for i in range(len(x_grid)):
-        x_val = x_grid[i]
-        # Interpolate all level lines at x_val
-        level_ys = [
-            np.interp(x_val, x_coords, u_array[level, :]) for level in range(n_levels)
-        ]
-        for j in range(len(y_grid)):
-            y_val = y_grid[j]
-            # Find the highest level below y_val
-            level = 0
-            for k in range(n_levels):
-                if level_ys[k] <= y_val:
-                    level = k
-            Z[j, i] = level * h0
-    return X, Y, Z
 
 
 def plot_3d_surface(
