@@ -12,13 +12,28 @@ numpy = ">=2.0.0,<2.3.0"
 numba = "^0.61.2"
 matplotlib = "^3.10.3"
 typed-argument-parser = "^1.10.1"
-jax = {extras = ["cpu"], version = "^0.6.2"}
-optimistix = "^0.0.10"
+jax = {extras = ["cpu"], version = "^0.8.0"}
+optimistix = "^0.0.11"
 lineax = "^0.0.8"
 scikit-learn = "^1.7.1"
 orbax = "^0.1.9"
 rich = "^14.2.0"
 
+
+[tool.poetry.group.cuda13]
+optional = true
+[tool.poetry.group.cuda13.dependencies]
+jax = { extras = ["cuda13"], version = "^0.8.0" }
+
+[tool.poetry.group.cuda12]
+optional = true
+[tool.poetry.group.cuda12.dependencies]
+jax = { extras = ["cuda12"], version = "^0.8.0" }
+
+[tool.poetry.group.tpu]
+optional = true
+[tool.poetry.group.tpu.dependencies]
+jax = { extras = ["tpu"], version = "^0.8.0" }
 
 [build-system]
 requires = ["poetry-core"]

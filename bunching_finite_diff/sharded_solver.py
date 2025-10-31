@@ -3,8 +3,6 @@ import os
 import sys
 from time import sleep
 
-from orbax.checkpoint._src.path import atomicity
-
 os.environ["XLA_FLAGS"] = (
     "--xla_force_host_platform_device_count=64 --xla_gpu_first_collective_call_warn_stuck_timeout_seconds=60"
 )
@@ -18,9 +16,6 @@ import jax.numpy as jnp
 import lineax
 import optimistix as optx
 import orbax.checkpoint as ocp
-from jax._src.mesh import Mesh
-from orbax.checkpoint._src.checkpoint_managers.preservation_policy import (
-    EveryNSteps, LatestN)
 from tap import Tap
 
 from libs.rhs import RHSType
@@ -37,6 +32,7 @@ if not logger.handlers:
     formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+    logger.propagate = False
 
 
 class CLI(Tap):
@@ -151,6 +147,10 @@ class ShardedSolver:
         self.checkpoint_interval = checkpoint_interval
         self.checkpoints_dir = Path(output_dir)
 
+        self.max_to_keep = max(
+            1, int(jnp.ceil(self.T / (self.dt * self.checkpoint_interval)))
+        )
+
         self.x = jnp.linspace(0, L, M)
         self.U = jnp.zeros((K, M))
         rand_seed = int.from_bytes(os.urandom(4), sys.byteorder)
@@ -166,56 +166,76 @@ class ShardedSolver:
         self.U = jax.device_put(self.U, P("X", "Y"))
         self.f = jax.jit(f_type.into_rhs(), out_shardings=P("X", "Y"))
 
+        self.make_dirs()
+
+    def make_dirs(self):
+        if self.checkpoints_dir.exists() and self.checkpoints_dir.is_dir():
+            logger.warning(
+                f"Output directory {self.checkpoints_dir} already exists!"
+                f"This may overwrite previous checkpoints."
+            )
+
+        self.checkpoints_dir.mkdir(parents=True, exist_ok=True)
+
+    def prepare_checkpoint(self, iter: int):
+        pytree = {
+            "U": self.U,
+            "X": self.x,
+        }
+        extra_metadata = {
+            "K": self.K,
+            "M": self.M,
+            "L": self.L,
+            "c": self.c,
+            "T": self.T,
+            "D": self.D,
+            "f_type": str(self.f_type),
+            "dt": self.dt,
+            "dx": self.dx,
+            "r": self.r,
+            "save_interval": self.checkpoint_interval,
+            "time_steps": self.time_steps,
+            "iter": iter,
+        }
+        return extra_metadata, pytree
+
     def solve(self):
         ocp_options = ocp.CheckpointManagerOptions(
-            preservation_policy=EveryNSteps(self.checkpoint_interval),
-            temporary_path_class=atomicity.CommitFileTemporaryPath,
+            max_to_keep=self.max_to_keep,
+            keep_period=self.checkpoint_interval,
         )
 
         with ocp.CheckpointManager(
             self.checkpoints_dir.resolve(True),
             options=ocp_options,
         ) as mngr:
-            for i in range(self.time_steps):
-                pytree = {
-                    "U": self.U,
-                    "X": self.x,
-                }
-                extra_metadata = {
-                    "K": self.K,
-                    "M": self.M,
-                    "L": self.L,
-                    "c": self.c,
-                    "T": self.T,
-                    "D": self.D,
-                    "f_type": str(self.f_type),
-                    "dt": self.dt,
-                    "dx": self.dx,
-                    "r": self.r,
-                    "save_interval": self.checkpoint_interval,
-                    "time_steps": self.time_steps,
-                    "iter": i,
-                }
+            for step in range(self.time_steps):
+                extra_metadata, pytree = self.prepare_checkpoint(step)
 
                 if jnp.any(jnp.isnan(self.U)):
-                    logger.warning("There are NaN is self.U!")
-                logger.info(f"Saving checkpoint at iteration {i}/{self.time_steps}")
+                    logger.warning("There are NaNs is self.U!")
 
-                # mngr.save(i, args = ocp.args.Composite(state = ocp.args.StandardSave(pytree), extra_metadata =ocp.args.JsonSave(extra_metadata)))
+                mngr.save(
+                    step,
+                    args=ocp.args.Composite(
+                        state=ocp.args.StandardSave(pytree),
+                        extra_metadata=ocp.args.JsonSave(extra_metadata),
+                    ),
+                )
 
-                logger.info(f"Starting iteration {i+1}/{self.time_steps}")
+                logger.info(f"Starting iteration {step+1}/{self.time_steps}")
 
                 status, solution = _step(
                     self.U, self.K, self.M, self.r, self.c, self.dt, self.f, tol=1e-6
                 )
+
                 if status != optx.RESULTS.successful:
                     logger.error(
-                        f"Solver failed at iteration {i+1} with result: {status}"
+                        f"Solver failed at iteration {step+1} with result: {status}"
                     )
                     break
-                # jax.debug.visualize_array_sharding(solution)
+
                 self.U = solution
-                # sleep(0.5)
 
 
 def main():
