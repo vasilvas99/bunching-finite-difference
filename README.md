@@ -4,21 +4,26 @@
 
 1. Install poetry 2.0+
     ```bash
-    pip3 install poetry
+    pip3 install uv
     ```
 2. Install the dependencies
     ```bash
-    poetry sync
+    uv sync
     ```
 3. Get help
     ```bash
-    poetry run python -m bunching_finite_diff --help
+    uv run python3 -m bunching_finite_diff --help
     ```
 4. Run simulation with defaults
     ```bash
-    poetry run python -m bunching_finite_diff
+    uv run python3 -m bunching_finite_diff
     ```
 5. **OR** Continue simulation from checkpoint
     ```bash
-    poetry run python -m bunching_finite_diff checkpoint <checkpoint_file.npz>
+    uv run python3 -m bunching_finite_diff checkpoint <checkpoint_file.npz>
+    ```
+
+6. **OPTIONAL** Install with GPU/TPU support
+    ```bash
+      uv sync --with <cuda13|cuda12|tpu>
     ```
