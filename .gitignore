@@ -5,3 +5,4 @@ checkpoints/
 *.npz
 *.png
 __pycache__/
+.venv
