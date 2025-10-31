@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import jax.numpy as jnp
 import numpy as np
+import orbax.checkpoint as ocp
 
 from libs.rhs import RHSType
 
@@ -85,3 +89,76 @@ class Checkpoint:
             "iter": self.iter,
         }
         np.savez_compressed(filepath, **checkpoint_data)
+
+    @staticmethod
+    def load_from_orbax(checkpoint_path: Path) -> Checkpoint:
+        import jax
+
+        checkpoint_idx = checkpoint_path.parts[-1]
+        try:
+            checkpoint_step = int(checkpoint_idx)
+        except ValueError:
+            raise ValueError(
+                f"Invalid checkpoint directory name: {checkpoint_idx}. "
+                "Expected an integer representing the checkpoint step."
+            )
+
+        with open(checkpoint_path / "extra_metadata" / "metadata", "r") as f:
+            metadata = json.load(f)
+
+        K = metadata["K"]
+        M = metadata["M"]
+        L = metadata["L"]
+
+        U = jnp.zeros((K, M))
+        X = jnp.linspace(0, L, M)
+        pytree = {"U": U, "X": X}
+
+        abstract_pytree = jax.tree_util.tree_map(
+            ocp.utils.to_shape_dtype_struct, pytree
+        )
+
+        registry = ocp.handlers.DefaultCheckpointHandlerRegistry()
+        registry.add("state", ocp.args.StandardRestore, ocp.StandardCheckpointHandler)
+        registry.add("extra_metadata", ocp.args.JsonRestore, ocp.JsonCheckpointHandler)
+
+        with ocp.CheckpointManager(
+            checkpoint_path.parent,
+            handler_registry=registry,
+        ) as new_mngr:
+            ch = new_mngr.restore(
+                checkpoint_step,
+                args=ocp.args.Composite(
+                    state=ocp.args.StandardRestore(abstract_pytree)
+                ),
+            )
+
+        state = ch.state
+
+        return Checkpoint(
+            U=np.array(state["U"]),
+            X=np.array(state["X"]),
+            K=metadata["K"],
+            M=metadata["M"],
+            L=metadata["L"],
+            c=metadata["c"],
+            T=metadata["T"],
+            D=metadata["D"],
+            f_type=metadata["f_type"],
+            dt=metadata["dt"],
+            dx=metadata["dx"],
+            r=metadata["r"],
+            save_interval=metadata["save_interval"],
+            time_steps=metadata["time_steps"],
+            iter=metadata["iter"],
+        )
+
+
+def test_orbax():
+    path = Path(sys.argv[1])
+    ch = Checkpoint.load_from_orbax(path)
+    print(ch)
+
+
+if __name__ == "__main__":
+    test_orbax()
