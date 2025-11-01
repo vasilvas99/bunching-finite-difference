@@ -207,7 +207,7 @@ class ShardedSolver:
                 extra_metadata, pytree = self.prepare_checkpoint(step)
 
                 if jnp.any(jnp.isnan(self.U)):
-                    logger.warning("There are NaNs is self.U!")
+                    logger.warning("There are NaNs in self.U!")
 
                 mngr.save(
                     step,
