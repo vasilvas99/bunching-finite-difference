@@ -1,12 +1,6 @@
 import logging
 import os
 import sys
-from time import sleep
-
-os.environ["XLA_FLAGS"] = (
-    "--xla_force_host_platform_device_count=64 --xla_gpu_first_collective_call_warn_stuck_timeout_seconds=60"
-)
-
 from functools import partial
 from pathlib import Path
 from typing import List
@@ -202,7 +196,7 @@ class ShardedSolver:
     def solve(self):
         ocp_options = ocp.CheckpointManagerOptions(
             max_to_keep=self.max_to_keep,
-            keep_period=self.checkpoint_interval,
+            save_interval_steps=self.checkpoint_interval,
         )
 
         with ocp.CheckpointManager(

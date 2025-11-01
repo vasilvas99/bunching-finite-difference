@@ -144,7 +144,7 @@ class Checkpoint:
             c=metadata["c"],
             T=metadata["T"],
             D=metadata["D"],
-            f_type=metadata["f_type"],
+            f_type=RHSType(metadata["f_type"]),
             dt=metadata["dt"],
             dx=metadata["dx"],
             r=metadata["r"],
@@ -152,13 +152,3 @@ class Checkpoint:
             time_steps=metadata["time_steps"],
             iter=metadata["iter"],
         )
-
-
-def test_orbax():
-    path = Path(sys.argv[1])
-    ch = Checkpoint.load_from_orbax(path)
-    print(ch)
-
-
-if __name__ == "__main__":
-    test_orbax()
