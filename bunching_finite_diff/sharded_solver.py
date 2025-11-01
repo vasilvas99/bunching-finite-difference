@@ -152,9 +152,6 @@ class ShardedSolver:
         self.U = jnp.arange(K)[:, None] * c + noise
 
         self.time_steps = int(jnp.ceil(T / dt))
-        self.number_format_width = (
-            int(jnp.log10(self.time_steps)) + 2 if self.time_steps > 0 else 2
-        )
         self.iter = 0
 
         self.U = jax.device_put(self.U, P("X", "Y"))
