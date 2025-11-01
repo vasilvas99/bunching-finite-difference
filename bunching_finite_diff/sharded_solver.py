@@ -166,7 +166,7 @@ class ShardedSolver:
         if self.checkpoints_dir.exists() and self.checkpoints_dir.is_dir():
             logger.warning(
                 f"Output directory {self.checkpoints_dir} already exists!"
-                f"This may overwrite previous checkpoints."
+                f" This may overwrite previous checkpoints."
             )
 
         self.checkpoints_dir.mkdir(parents=True, exist_ok=True)
