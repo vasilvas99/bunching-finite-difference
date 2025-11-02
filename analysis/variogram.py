@@ -7,7 +7,8 @@ from scipy.signal import correlate
 from tap import Tap
 
 from libs.checkpoints import Checkpoint
-from libs.data3d import create_3d_surface_from_level_lines
+from libs.data3d import (create_3d_surface_from_level_lines,
+                         subtract_average_surface_slope)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -23,6 +24,7 @@ class CLI(Tap):
     input_checkpoint: Path
     h0: int = 1
     samples: int = 300
+    subtract_vicinal: bool = False
 
     def configure(self):
         self.add_argument(
@@ -155,6 +157,8 @@ def main():
     X, Y, Z = create_3d_surface_from_level_lines(
         ch.U - np.min(ch.U), ch.X, cli.h0, samples=cli.samples
     )
+    if cli.subtract_vicinal:
+        Z = subtract_average_surface_slope(X, Y, Z)
 
     x_step = float(X[0, 1] - X[0, 0])
     y_step = float(Y[1, 0] - Y[0, 0])

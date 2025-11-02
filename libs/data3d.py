@@ -25,3 +25,12 @@ def create_3d_surface_from_level_lines(u_array, x_coords, h0, samples=300):
                     level = k
             Z[j, i] = level * h0
     return X, Y, Z
+
+
+def subtract_average_surface_slope(X, Y, Z):
+    # fit plane Z = aX + bY + c
+    A = np.c_[X.ravel(), Y.ravel(), np.ones(X.size)]
+    C, _, _, _ = np.linalg.lstsq(A, Z.ravel(), rcond=None)
+    a, b, c = C
+    Z_detrended = Z - (a * X + b * Y + c)
+    return Z_detrended

@@ -5,7 +5,7 @@ import numpy as np
 from tap import Tap
 
 from libs.checkpoints import Checkpoint
-from libs.data3d import create_3d_surface_from_level_lines
+from libs.data3d import create_3d_surface_from_level_lines, subtract_average_surface_slope
 
 
 class CLI(Tap):
@@ -13,6 +13,7 @@ class CLI(Tap):
     h0: int = 1  # Step height used during visualization
     save: bool = False  # Save the plot to a file
     save_dir: Path = Path("./3d")  # Directory to save the plot
+    subtract_vicinal: bool = False  # Subtract average surface slope
 
     def configure(self):
         self.add_argument(
@@ -81,6 +82,8 @@ def main():
     ch = Checkpoint.load_from_file(cli.input_checkpoint)
 
     X, Y, Z = create_3d_surface_from_level_lines(ch.U - np.min(ch.U), ch.X, cli.h0)
+    if cli.subtract_vicinal:
+        Z = subtract_average_surface_slope(X, Y, Z)
 
     plot_3d_surface(
         X, Y, Z, ch.U, ch.X, "3D Staircase Surface from Level Lines", h0=cli.h0
