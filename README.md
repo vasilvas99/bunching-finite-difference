@@ -25,5 +25,5 @@
 
 6. **OPTIONAL** Install with GPU/TPU support
     ```bash
-      uv sync --with <cuda13|cuda12|tpu>
+      uv sync --group <cuda13|cuda12|tpu>
     ```
