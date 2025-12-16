@@ -1,0 +1,44 @@
+config_id: "example_launcher_001"
+device_layout:
+  x_devices: 1
+  y_devices: 1
+workdir: "{{ PWD }}/workdir_example"
+max_retry_count: 3
+
+jobs:
+  # First simulation run
+  - type: SimulationRunConfig
+    job_name: "simulation_run_1"
+    checkpoints_dir: "{{ WORKDIR }}/checkpoints/sim_run_1"
+    step_count: 20
+    step_nodes: 100
+    step_length: 5.0
+    time_max: 0.01
+    time_step: 1e-4
+    step_stiffness: 0.1
+    rhs_type: "MM2_a50_r1_jax"
+    initial_spacing: 1.0
+    solver_tolerance: 1e-6
+    checkpoint_interval: 50
+
+  # Second simulation run
+  - type: SimulationRunConfig
+    job_name: "simulation_run_2"
+    checkpoints_dir: "{{ WORKDIR }}/checkpoints/sim_run_2"
+    step_count: 30
+    step_nodes: 150
+    step_length: 7.5
+    time_max: 0.01
+    time_step: 1e-4
+    step_stiffness: 0.1
+    rhs_type: "MM2_a50_r1_jax"
+    initial_spacing: 1.0
+    solver_tolerance: 1e-6
+    checkpoint_interval: 50
+
+  - type: UploadJobConfig
+    s3_url: "https://s3.endpoint.mysite.com/bucket_name"
+    access_key_id: "EXAMPLE ACCESS KEY ID HERE"
+    secret_access_key: "EXAMPLE ACCESS KEY HERE"
+    path: "{{ WORKDIR }}"
+
