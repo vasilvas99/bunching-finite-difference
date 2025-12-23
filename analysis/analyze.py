@@ -3,10 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
-import numpy.typing as npt
 from sklearn import linear_model
 from tap import Tap
 
