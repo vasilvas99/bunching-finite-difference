@@ -76,5 +76,9 @@ The `.plan.yaml` format allows for Jinja templating. The following variables are
 - `{{ WORKDIR }}` - The workdir as defined in the workdir field of the plan file.
 - `{{ env.VAR_NAME }}` - The value of the environment variable VAR_NAME
 
+Available extra jinja functions are:
+- `pow(a, b)` - computes a to the power of b
+- `ln(x)` - computes the natural logarithm of x
+
 Further, the launcher support the jinja ansible features that help with yaml handling.
 List is here: [https://pypi.org/project/jinja2-ansible-filters/](https://pypi.org/project/jinja2-ansible-filters/)

@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import math
 import os
 import tarfile
 from contextlib import closing
@@ -22,10 +23,12 @@ from libs.rhs import RHSType
 JINJA_ENV = Environment(
     extensions=["jinja2_ansible_filters.AnsibleCoreFiltersExtension"]
 )
-
+# add pow and log_e functions to jinja environment
+JINJA_ENV.globals["pow"] = pow
+JINJA_ENV.globals["ln"] = lambda x: math.log(x)
 
 class CLI(Tap):
-    ...
+    render: bool = False  # If set, will render the config file with Jinja2 and exit
 
     def configure(self):
         self.add_argument("CONFIG_PATH", type=Path, help="Path to the run config file.")
@@ -37,10 +40,7 @@ def stable_hash(obj) -> str:
     This hash is consistent across Python sessions unlike the built-in hash().
     """
     # Convert object to JSON string for hashing
-    if isinstance(obj, dict):
-        json_str = json.dumps(obj, sort_keys=True, default=str)
-    else:
-        json_str = json.dumps(obj, sort_keys=True, default=str)
+    json_str = json.dumps(obj, sort_keys=True, default=str)
 
     # Return hex digest (first 16 chars for brevity)
     return hashlib.sha256(json_str.encode()).hexdigest()[:16]
@@ -154,17 +154,6 @@ class SimulationLauncherConfig(BaseModel):
         description="List of simulation runs and upload jobs to execute",
     )
 
-    def __hash__(self):
-        config_data = {
-            "config_id": self.config_id,
-            "device_mesh": str(self.device_layout),
-            "jax_prealloc_gpu_mem_fract": self.jax_prealloc_gpu_mem_fract,
-            "workdir": self.workdir.as_posix() if self.workdir else None,
-            "max_retry_count": self.max_retry_count,
-            "jobs": [str(hash(job)) for job in self.jobs],
-        }
-        return int(stable_hash(config_data), 16)
-
 
 class BaseLog(BaseModel):
     job_hash: str
@@ -248,7 +237,7 @@ def load_launcher_config(config_path: Path) -> SimulationLauncherConfig:
     # First render: render Jinja with PWD, DATE and current env variables
     template_vars_initial = {
         "PWD": Path.cwd().as_posix(),
-        "DATE": datetime.now().isoformat(),
+        "DATE": datetime.now().strftime("%Y%m%d"),
         **env_vars,
     }
 
@@ -265,8 +254,9 @@ def load_launcher_config(config_path: Path) -> SimulationLauncherConfig:
     # Second render: render Jinja again with WORKDIR now available
     template_vars_final = {
         "PWD": Path.cwd().as_posix(),
-        "DATE": datetime.now().isoformat(),
+        "DATE": datetime.now().strftime("%Y%m%d"),
         "WORKDIR": workdir_value if workdir_value else "",
+        **env_vars,
     }
     rendered_content_final = template.render(**template_vars_final)
 
@@ -380,7 +370,7 @@ class Launcher:
         self.log_path.write_text(self.log.model_dump_json(indent=2))
 
     def _execute_simulation_run(self, job: SimulationRunConfig):
-        ch_dir = self.config.workdir.resolve() / job.checkpoints_dir
+        ch_dir = job.checkpoints_dir
         try:
             solver = ShardedSolver.load_from_last_checkpoint(
                 ch_dir, device_layout=self.config.device_layout
@@ -436,6 +426,15 @@ def main():
     logger = logging.getLogger(__name__)
     logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
     cli = CLI().parse_args()
+
+    if cli.render:
+        config = load_launcher_config(cli.CONFIG_PATH)
+        yaml_str = yaml.safe_dump(
+            config.model_dump(mode="json"), sort_keys=False, default_flow_style=False
+        )
+        print(yaml_str)
+        return
+
     config = load_launcher_config(cli.CONFIG_PATH)
     logger.info(f"Loaded launcher config with ID: {config.config_id}")
     launcher = Launcher(config)
