@@ -23,6 +23,7 @@ if not logger.handlers:
 class CLI(Tap):
     input: Path  # Path to an input checkpoint file or a directory containing checkpoint files
     parallelism: int = 4  # Threads to use  for plotting
+    show: bool = False # Whether show or save
 
     def configure(self):
         self.add_argument(
@@ -32,7 +33,7 @@ class CLI(Tap):
         )
 
 
-def plot_dir(input_dir: Path):
+def plot_dir(input_dir: Path, show = False):
     checkpoint_files = list(input_dir.glob("*.npz"))
     output_dir = input_dir / "plots"
     os.makedirs(output_dir, exist_ok=True)
@@ -46,7 +47,7 @@ def plot_dir(input_dir: Path):
         pool.map(partial_plot_single, checkpoint_files)
 
 
-def plot_single(input_path: Path, output_dir: Path):
+def plot_single(input_path: Path, output_dir: Path, show = False):
     logger.debug(f"Plotting checkpoint file: {input_path}")
     checkpoint = Checkpoint.load_from_file(input_path)
     step = checkpoint.iter
@@ -67,9 +68,12 @@ def plot_single(input_path: Path, output_dir: Path):
     plt.title(f"Time step {step}")
 
     image_name = f"{input_path.stem}.png"
-    plt.savefig(output_dir / image_name, dpi=200)
-    logger.debug(f"Saved plot to {output_dir/image_name}")
-    plt.close()
+    if not show:
+        plt.savefig(output_dir / image_name, dpi=200)
+        logger.debug(f"Saved plot to {output_dir/image_name}")
+        plt.close()
+    else:
+        plt.show()
 
 
 def main():
@@ -80,7 +84,7 @@ def main():
         plot_dir(cli.input)
     elif cli.input.is_file():
         logger.info(f"Plotting single checkpoint file: {cli.input}")
-        plot_single(cli.input, cli.input.parent)
+        plot_single(cli.input, cli.input.parent, show=cli.show)
     else:
         raise ValueError(f"Input {cli.input} is neither a file nor a directory.")
     logger.info(f"Finished plotting all checkpoints in directory: {cli.input}")
