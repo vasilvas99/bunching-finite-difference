@@ -232,8 +232,7 @@ class LauncherLog(BaseModel):
 
 def load_launcher_config(config_path: Path) -> SimulationLauncherConfig:
     config_content = config_path.read_text()
-    env_vars = {f"env.{key}": value for key, value in os.environ.items()}
-
+    env_vars = {f"ENV_{key}": value for key, value in os.environ.items()}
     # First render: render Jinja with PWD, DATE and current env variables
     template_vars_initial = {
         "PWD": Path.cwd().as_posix(),
