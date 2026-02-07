@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """
-Fast NPZ to XYZ converter for step bunching visualization.
+NPZ to XYZ converter with INVERTED coordinate system.
 
-Optimized version with hardcoded parameters:
-- h0 = 1.0 (step height)
-- step_edge_fill_rate = 1 (one atom per step height)
-- Vectorized step edge generation
-- Pre-allocated arrays for better memory efficiency
-- Compression enabled by default
+INVERTED COORDINATE SYSTEM:
+- Original: y=0 (bottom) → z=0, y_max (top) → z=K*h0
+- Inverted: y=0 (bottom) → z=K*h0, y_max (top) → z=0
 
-Converts npz checkpoint files to XYZ format for VMD/OVITO visualization.
+Implementation: height_array = (K - terrace_levels) * h0
+
+Identical to npz_to_xyz_fast.py except for the height inversion.
 """
 
 import gzip
@@ -43,7 +42,7 @@ class CLI(Tap):
         500  # Number of atoms in y-direction (reduced from 1000 for better performance)
     )
     compress: bool = True  # Use gzip compression (.xyz.gz format) - enabled by default for smaller files
-    trajectory: bool = True  # Create single trajectory file from multiple npz files (directory mode only)
+    trajectory: bool = False  # Create single trajectory file from multiple npz files (directory mode only)
 
     def configure(self):
         self.add_argument(
@@ -117,14 +116,16 @@ def create_xyz_from_checkpoint(checkpoint: Checkpoint, atoms_per_terrace: int):
     for j, (y_grid_coord, y_phys) in enumerate(zip(y_grid, y_physical)):
         # Count how many steps each x position has crossed (vectorized)
         terrace_levels = np.sum(U_norm <= y_phys, axis=0)  # Shape: (M,)
-        height_array = terrace_levels * H0
 
-        # Vectorized step edge detection
+        # INVERTED: Flip the height from top to bottom
+        height_array = (K - terrace_levels) * H0
+
+        # Vectorized step edge detection (INVERTED: look for height drops)
         if prev_height_array is not None:
             height_diff = height_array - prev_height_array
 
-            # Find positions with significant height jumps (vectorized)
-            step_mask = height_diff >= (H0 * STEP_THRESHOLD)
+            # INVERTED: Heights DECREASE as y increases, so look for negative drops
+            step_mask = height_diff <= -(H0 * STEP_THRESHOLD)
             step_indices = np.where(step_mask)[0]
 
             # Process step edges
@@ -133,8 +134,8 @@ def create_xyz_from_checkpoint(checkpoint: Checkpoint, atoms_per_terrace: int):
                 curr_h = height_array[i]
                 diff = curr_h - prev_h
 
-                # Calculate number of intermediate atoms
-                num_intermediate = int(diff / H0) * STEP_EDGE_FILL_RATE
+                # INVERTED: diff is negative, use absolute value
+                num_intermediate = int(abs(diff) / H0) * STEP_EDGE_FILL_RATE
 
                 if num_intermediate > 0:
                     # Check if we need to expand arrays
@@ -382,7 +383,7 @@ def main():
         )
 
     elif cli.input.is_dir():
-        # Directory processing
+        # Directory processing - save separate xyz.gz files in the same directory
         if cli.trajectory:
             # Create single trajectory file
             if cli.output is None:
@@ -397,18 +398,30 @@ def main():
                 cli.compress,
             )
         else:
-            # Create separate files for each npz
+            # Create separate files in an output directory
             if cli.output is None:
                 output_dir = cli.input / "xyz_output"
             else:
                 output_dir = cli.output
 
-            process_directory(
-                cli.input,
-                output_dir,
-                cli.atoms_per_terrace,
-                cli.compress,
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            logger.info(
+                f"Processing {cli.input} - saving separate xyz.gz files to {output_dir}"
             )
+
+            npz_files = list(cli.input.glob("*.npz"))
+            if not npz_files:
+                raise ValueError(f"No .npz files found in {cli.input}")
+
+            logger.info(f"Found {len(npz_files)} npz files to process")
+
+            for npz_file in npz_files:
+                # Save xyz file in output directory with same base name
+                output_file = output_dir / f"{npz_file.stem}.xyz"
+                process_single_npz(
+                    npz_file, output_file, cli.atoms_per_terrace, cli.compress
+                )
     else:
         raise ValueError(f"Input {cli.input} is neither a file nor a directory")
 
