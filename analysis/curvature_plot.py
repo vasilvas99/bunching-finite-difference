@@ -15,7 +15,6 @@ class CLI(Tap):
     sigma: float = 6.0  # Standard deviation for Gaussian smoothing
     parallelism: int = 4  # Threads to use for plotting
     save: bool = False  # Whether to save the plot instead of showing it
-    csv: bool = False  # Whether to save the data points to a CSV file instead of plotting
 
     def configure(self):
         self.add_argument(
@@ -80,13 +79,6 @@ def main():
     iterations *= first_checkpoint.dt
     curvatures = np.array(curvatures)
     curvatures /= curvatures[0]
-
-    if cli.csv:
-        csv_path = checkpoints_dir.parent / f"curvature_data_{checkpoints_dir.name}.csv"
-        np.savetxt(csv_path, np.column_stack((iterations, curvatures)), delimiter=",", header="time,relative_curvature", comments="")
-        print(f"Data points saved to {csv_path}")
-        return
-
     plt.plot(iterations, curvatures)
     plt.title(f"Relative surface curvature over time ($\\gamma$={first_checkpoint.D})")
     plt.ylabel("Relative surface curvature")
