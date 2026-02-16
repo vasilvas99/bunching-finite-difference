@@ -2,7 +2,7 @@ config_id: manuscript_sweep
 device_layout:
   x_devices: 2
   y_devices: 1
-workdir: "{{ ENV_HOME }}/smb_share/vasko/manuscript_runs"
+workdir: "{{ env.HOME }}/smb_share/vasko/manuscript_runs"
 max_retry_count: 3
 jobs:
 {% set rhs_types = [

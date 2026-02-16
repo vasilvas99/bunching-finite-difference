@@ -232,12 +232,12 @@ class LauncherLog(BaseModel):
 
 def load_launcher_config(config_path: Path) -> SimulationLauncherConfig:
     config_content = config_path.read_text()
-    env_vars = {f"ENV_{key}": value for key, value in os.environ.items()}
-    # First render: render Jinja with PWD, DATE and current env variables
+    env_vars = {key: value for key, value in os.environ.items()}
+
     template_vars_initial = {
         "PWD": Path.cwd().as_posix(),
         "DATE": datetime.now().strftime("%Y%m%d"),
-        **env_vars,
+        "env": env_vars,
     }
 
     template = JINJA_ENV.from_string(config_content)
@@ -255,7 +255,7 @@ def load_launcher_config(config_path: Path) -> SimulationLauncherConfig:
         "PWD": Path.cwd().as_posix(),
         "DATE": datetime.now().strftime("%Y%m%d"),
         "WORKDIR": workdir_value if workdir_value else "",
-        **env_vars,
+        "env": env_vars,
     }
     rendered_content_final = template.render(**template_vars_final)
 
