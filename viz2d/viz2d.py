@@ -34,7 +34,7 @@ class CLI(Tap):
         )
 
 
-def plot_dir(input_dir: Path, show = False, publication = False):
+def plot_dir(input_dir: Path, show = False, publication = False, parallelism = 4):
     checkpoint_files = list(input_dir.glob("*.npz"))
     output_dir = input_dir / "plots"
     os.makedirs(output_dir, exist_ok=True)
@@ -44,7 +44,7 @@ def plot_dir(input_dir: Path, show = False, publication = False):
 
     partial_plot_single = partial(plot_single, output_dir=output_dir, show=show, publication=publication)
 
-    with Pool(processes=CLI().parallelism) as pool:
+    with Pool(processes=parallelism) as pool:
         pool.map(partial_plot_single, checkpoint_files)
 
 
@@ -94,7 +94,7 @@ def main():
 
     if cli.input.is_dir():
         logger.info(f"Plotting all checkpoints in directory: {cli.input}")
-        plot_dir(cli.input, show=cli.show, publication=cli.publication)
+        plot_dir(cli.input, show=cli.show, publication=cli.publication, parallelism=cli.parallelism)
     elif cli.input.is_file():
         logger.info(f"Plotting single checkpoint file: {cli.input}")
         plot_single(cli.input, cli.input.parent, show=cli.show, publication=cli.publication)

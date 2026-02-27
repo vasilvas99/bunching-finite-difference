@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -9,6 +10,15 @@ import numpy as np
 import orbax.checkpoint as ocp
 
 from libs.rhs import RHSType
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
 
 @dataclass
@@ -93,14 +103,7 @@ class Checkpoint:
     def load_from_orbax(checkpoint_path: Path) -> Checkpoint:
         import jax
 
-        checkpoint_idx = checkpoint_path.parts[-1]
-        try:
-            checkpoint_step = int(checkpoint_idx)
-        except ValueError:
-            raise ValueError(
-                f"Invalid checkpoint directory name: {checkpoint_idx}. "
-                "Expected an integer representing the checkpoint step."
-            )
+        logger.debug(f"Loading checkpoint from {checkpoint_path}")
 
         with open(checkpoint_path / "extra_metadata" / "metadata", "r") as f:
             metadata = json.load(f)
@@ -117,22 +120,13 @@ class Checkpoint:
             ocp.utils.to_shape_dtype_struct, pytree
         )
 
-        registry = ocp.handlers.DefaultCheckpointHandlerRegistry()
-        registry.add("state", ocp.args.StandardRestore, ocp.StandardCheckpointHandler)
-        registry.add("extra_metadata", ocp.args.JsonRestore, ocp.JsonCheckpointHandler)
+        checkpointer = ocp.StandardCheckpointer()
+        state = checkpointer.restore(
+            checkpoint_path / "state",
+            abstract_pytree,
+        )
 
-        with ocp.CheckpointManager(
-            checkpoint_path.parent,
-            handler_registry=registry,
-        ) as new_mngr:
-            ch = new_mngr.restore(
-                checkpoint_step,
-                args=ocp.args.Composite(
-                    state=ocp.args.StandardRestore(abstract_pytree)
-                ),
-            )
-
-        state = ch.state
+        logger.debug(f"Loaded checkpoint from {checkpoint_path}")
 
         return Checkpoint(
             U=np.array(state["U"]),
