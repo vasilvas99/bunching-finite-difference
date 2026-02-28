@@ -22,6 +22,7 @@ dependencies = [
     "boto3>=1.42.14",
     "botocore>=1.42.14",
     "pyyaml>=6.0.3",
+    "joblib>=1.5.3",
 ]
 
 [project.optional-dependencies]

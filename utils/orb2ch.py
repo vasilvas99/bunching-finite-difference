@@ -1,8 +1,8 @@
 import logging
 import os
-from functools import partial
-from multiprocessing import Pool
 from pathlib import Path
+
+import joblib
 
 os.environ["JAX_PLATFORMS"] = "cpu"
 
@@ -60,12 +60,16 @@ def main():
         ]
         cli.output_ch.mkdir(parents=True, exist_ok=True)
 
-        with Pool(processes=cli.parallelism) as pool:
+        with joblib.Parallel(n_jobs=cli.parallelism) as parallel:
             logger.info(f"Converting {len(sub_dirs)} checkpoints to .npz files...")
-            pool.map(
-                partial(_convert_checkpoint, output_dir=cli.output_ch),
-                sub_dirs,
+
+            parallel(
+                joblib.delayed(_convert_checkpoint)(
+                    checkpoint_dir=sub_dir, output_dir=cli.output_ch
+                )
+                for sub_dir in sub_dirs
             )
+
             if cli.with_plot:
                 logger.info(f"Plotting {len(sub_dirs)} checkpoints.")
                 plot_dir(
