@@ -23,6 +23,7 @@ dependencies = [
     "botocore>=1.42.14",
     "pyyaml>=6.0.3",
     "joblib>=1.5.3",
+    "pytest>=9.0.2",
 ]
 
 [project.optional-dependencies]
