@@ -1,17 +1,37 @@
 config_id: manuscript_sweep
 device_layout:
-  x_devices: 2
+  x_devices: 1
   y_devices: 1
-workdir: "{{ PWD }}/smb_share/vasko/manuscript_revised"
+workdir: "{{ PWD }}/manuscript"
 max_retry_count: 3
 jobs:
-{% set rhs_types = [
-  ("MM2_a0p1_r1_jax", "a0p1_r1"),
-  ("MM2_a1_r1_jax", "a1_r1"),
-  ("MM2_a10_r1_jax", "a10_r1"),
-  ("MM2_a50_r1_jax", "a50_r1"),
+{% set configurations = [
+  (
+    [("MM2_a0p1_r1_jax", "a0p1_r1"), ("MM2_a1_r1_jax", "a1_r1"), ("MM2_a10_r1_jax", "a10_r1")],
+    [0.05, 0.1, 1, 5, 10, 50],
+    200,
+    0.001
+  ),
+  (
+    [("MM2_a50_r1_jax", "a50_r1")],
+    [0.05, 0.1, 1, 5, 10],
+    1000,
+    0.0005
+  ),
+  (
+    [("MM2_a50_r1_jax", "a50_r1")],
+    [50],
+    2000,
+    0.0001
+  ),
+  (
+    [("MM2_a100_r1_jax", "a100_r1")],
+    [0.05, 0.1, 1, 5, 10, 50],
+    2000,
+    0.0001
+  )
 ] %}
-{% set step_stiffnesses = [0.05, 0.1, 1, 5, 10, 50] %}
+{% for rhs_types, step_stiffnesses, step_nodes, time_step in configurations %}
 {% for rhs_type, rhs_label in rhs_types %}
 {% for step_stiffness in step_stiffnesses %}
 {% set stiffness_label = step_stiffness | string | replace(".", "p") %}
@@ -19,39 +39,15 @@ jobs:
   job_name: sweep_{{ rhs_label }}_stiffness_{{ stiffness_label }}
   checkpoints_dir: "{{ WORKDIR }}/run_{{ rhs_label }}_step_stiffness_{{ stiffness_label }}"
   step_count: 50
-  step_nodes: 200
+  step_nodes: {{ step_nodes }}
   step_length: 50
   time_max: 200.0
-  time_step: 0.001
+  time_step: {{ time_step }}
   step_stiffness: {{ step_stiffness }}
   rhs_type: {{ rhs_type }}
   initial_spacing: 1.0
   solver_tolerance: 1.0e-06
   checkpoint_interval: 50
-
 {% endfor %}
-{% endfor %}
-
-{% set rhs_types = [
-  ("MM2_a100_r1_jax", "a100_r1"),
-] %}
-{% set step_stiffnesses = [0.05, 0.1, 1, 5, 10, 50] %}
-{% for rhs_type, rhs_label in rhs_types %}
-{% for step_stiffness in step_stiffnesses %}
-{% set stiffness_label = step_stiffness | string | replace(".", "p") %}
-- type: SimulationRunConfig
-  job_name: sweep_{{ rhs_label }}_stiffness_{{ stiffness_label }}
-  checkpoints_dir: "{{ WORKDIR }}/run_{{ rhs_label }}_step_stiffness_{{ stiffness_label }}"
-  step_count: 50
-  step_nodes: 300
-  step_length: 50
-  time_max: 200.0
-  time_step: 0.0005
-  step_stiffness: {{ step_stiffness }}
-  rhs_type: {{ rhs_type }}
-  initial_spacing: 1.0
-  solver_tolerance: 1.0e-06
-  checkpoint_interval: 50
-
 {% endfor %}
 {% endfor %}
