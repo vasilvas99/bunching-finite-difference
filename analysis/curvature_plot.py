@@ -14,6 +14,7 @@ class CLI(Tap):
     checkpoints_dir: Path  # Directory containing the checkpoints
     sigma: float = 6.0  # Standard deviation for Gaussian smoothing
     parallelism: int = 4  # Threads to use for plotting
+    save: bool = False  # Whether to save the plot instead of showing it
 
     def configure(self):
         self.add_argument(
@@ -48,7 +49,7 @@ def main():
     checkpoints_dir = cli.checkpoints_dir
     datapoints = []
 
-    checkpoints = checkpoints_dir.glob("checkpoint_*.npz")
+    checkpoints = checkpoints_dir.glob("*.npz")
     try:
         first_checkpoint = Checkpoint.load_from_file(next(checkpoints))
     except StopIteration:
@@ -82,7 +83,14 @@ def main():
     plt.title(f"Relative surface curvature over time ($\\gamma$={first_checkpoint.D})")
     plt.ylabel("Relative surface curvature")
     plt.xlabel("time (s)")
-    plt.show()
+
+    plot_path = checkpoints_dir.parent / f"curvature_plot_{checkpoints_dir.name}.png"
+
+    if cli.save:
+        plt.savefig(plot_path, dpi=300)
+        print(f"Plot saved to {plot_path}")
+    else:
+        plt.show()
 
 
 if __name__ == "__main__":

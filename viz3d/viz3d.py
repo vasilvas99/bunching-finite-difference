@@ -5,7 +5,10 @@ import numpy as np
 from tap import Tap
 
 from libs.checkpoints import Checkpoint
-from libs.data3d import create_3d_surface_from_level_lines, subtract_average_surface_slope
+from libs.data3d import (
+    create_3d_surface_from_level_lines,
+    subtract_average_surface_slope,
+)
 
 
 class CLI(Tap):

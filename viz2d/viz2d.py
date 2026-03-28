@@ -1,9 +1,8 @@
 import logging
 import os
-from functools import partial
-from multiprocessing import Pool
 from pathlib import Path
 
+import joblib
 import matplotlib.pyplot as plt
 import numpy as np
 from tap import Tap
@@ -23,6 +22,8 @@ if not logger.handlers:
 class CLI(Tap):
     input: Path  # Path to an input checkpoint file or a directory containing checkpoint files
     parallelism: int = 4  # Threads to use  for plotting
+    show: bool = False  # Whether show or save
+    publication: bool = False  # Whether to use publication style for the plots
 
     def configure(self):
         self.add_argument(
@@ -32,7 +33,7 @@ class CLI(Tap):
         )
 
 
-def plot_dir(input_dir: Path):
+def plot_dir(input_dir: Path, show=False, publication=False, parallelism=4):
     checkpoint_files = list(input_dir.glob("*.npz"))
     output_dir = input_dir / "plots"
     os.makedirs(output_dir, exist_ok=True)
@@ -40,13 +41,14 @@ def plot_dir(input_dir: Path):
     if not checkpoint_files:
         raise ValueError(f"No checkpoint files found in directory {input_dir}.")
 
-    partial_plot_single = partial(plot_single, output_dir=output_dir)
+    with joblib.Parallel(n_jobs=parallelism) as parallel:
+        parallel(
+            joblib.delayed(plot_single)(input_path, output_dir, show, publication)
+            for input_path in checkpoint_files
+        )
 
-    with Pool(processes=CLI().parallelism) as pool:
-        pool.map(partial_plot_single, checkpoint_files)
 
-
-def plot_single(input_path: Path, output_dir: Path):
+def plot_single(input_path: Path, output_dir: Path, show=False, publication=False):
     logger.debug(f"Plotting checkpoint file: {input_path}")
     checkpoint = Checkpoint.load_from_file(input_path)
     step = checkpoint.iter
@@ -59,17 +61,32 @@ def plot_single(input_path: Path, output_dir: Path):
 
     plt.figure()
     for i in range(K):
-        plt.plot(x, U_norm[i, :], label=f"$u_{{" f"{i + 1}" f"}}$")
+        if publication:
+            plt.plot(x, U_norm[i, :], label=f"$u_{{{i + 1}}}$", color="black")
+        else:
+            plt.plot(x, U_norm[i, :], label=f"$u_{{{i + 1}}}$")
 
     plt.xlabel("x")
-    plt.ylabel("$u_i - min$")
+
     plt.ylim(0, U_max)
-    plt.title(f"Time step {step}")
+    if not publication:
+        plt.ylabel("$u_i - min$")
+    else:
+        plt.ylabel("$u_n(x)$")
+
+    if not publication:
+        plt.title(f"Time step {step}")
+
+    if publication:
+        plt.tight_layout()
 
     image_name = f"{input_path.stem}.png"
-    plt.savefig(output_dir / image_name, dpi=200)
-    logger.debug(f"Saved plot to {output_dir/image_name}")
-    plt.close()
+    if not show:
+        plt.savefig(output_dir / image_name, dpi=200)
+        logger.debug(f"Saved plot to {output_dir/image_name}")
+        plt.close()
+    else:
+        plt.show()
 
 
 def main():
@@ -77,10 +94,17 @@ def main():
 
     if cli.input.is_dir():
         logger.info(f"Plotting all checkpoints in directory: {cli.input}")
-        plot_dir(cli.input)
+        plot_dir(
+            cli.input,
+            show=cli.show,
+            publication=cli.publication,
+            parallelism=cli.parallelism,
+        )
     elif cli.input.is_file():
         logger.info(f"Plotting single checkpoint file: {cli.input}")
-        plot_single(cli.input, cli.input.parent)
+        plot_single(
+            cli.input, cli.input.parent, show=cli.show, publication=cli.publication
+        )
     else:
         raise ValueError(f"Input {cli.input} is neither a file nor a directory.")
     logger.info(f"Finished plotting all checkpoints in directory: {cli.input}")
