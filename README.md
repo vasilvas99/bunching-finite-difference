@@ -82,3 +82,12 @@ Available extra jinja functions are:
 
 Further, the launcher support the jinja ansible features that help with yaml handling.
 List is here: [https://pypi.org/project/jinja2-ansible-filters/](https://pypi.org/project/jinja2-ansible-filters/)
+
+## Articles
+
+This repository was used to produce the manuscript **"Step Bunching and Meandering as Common Growth Modes: A Discrete Model
+and a Continuum Description"**.
+
+If you use any of the work here, please cite the article!
+
+To reproduce the article results you can consult: [.manuscript/REPRODUCING.md](.manuscript/REPRODUCING.md)
